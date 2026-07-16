@@ -1,0 +1,30 @@
+name: gym_app
+description: Gym workout app powered by the Exercises Dataset - 1,324 exercises with multilingual instructions.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  shared_preferences: ^2.2.2
+  cached_network_image: ^3.3.1
+  flutter_staggered_animations: ^1.1.1
+  google_fonts: ^6.1.0
+  http: ^1.2.1
+  intl: ^0.19.0
+  supabase_flutter: ^2.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/data/exercises.json

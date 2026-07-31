@@ -420,7 +420,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         crossAxisCount: 2,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 0.72,
+        childAspectRatio: 0.68,
       ),
       itemCount: favs.length,
       itemBuilder: (context, index) {
@@ -564,42 +564,21 @@ class _FavoriteCard extends StatelessWidget {
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
+            color: AppTheme.bgLight,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppTheme.glassBorder, width: 0.5),
-            boxShadow: [
-              BoxShadow(
-                color: color.withValues(alpha: 0.08),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            border: Border.all(
+              color: color.withValues(alpha: 0.25),
+              width: 0.8,
+            ),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: Stack(
-              fit: StackFit.expand,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── Fondo con gradiente ──
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppTheme.bgMid,
-                        color.withValues(alpha: 0.06),
-                        AppTheme.bgDark,
-                      ],
-                    ),
-                  ),
-                ),
-
-                // ── Imagen ──
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 65,
+                // ── Zona de imagen ──
+                Expanded(
+                  flex: 5,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -607,39 +586,20 @@ class _FavoriteCard extends StatelessWidget {
                           ? CachedNetworkImage(
                               imageUrl: imgUrl,
                               fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(
-                                color: color.withValues(alpha: 0.08),
-                                child: Icon(
-                                  AppTheme.getCategoryIcon(exercise.category),
-                                  size: 28,
-                                  color: color.withValues(alpha: 0.3),
-                                ),
-                              ),
+                              placeholder: (_, __) => _imgFallback(color),
                               errorWidget: (_, __, ___) => _imgFallback(color),
                             )
                           : _imgFallback(color),
 
-                      // Gradiente sobre imagen
-                      const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, AppTheme.bgMid],
-                            stops: [0.5, 1.0],
-                          ),
-                        ),
-                      ),
-
-                      // ── Icono de categoría (top-left) ──
+                      // ── Icono categoría (top-left) ──
                       Positioned(
-                        top: 6,
-                        left: 6,
+                        top: 8,
+                        left: 8,
                         child: Container(
-                          padding: const EdgeInsets.all(4),
+                          padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.45),
-                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.black.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
                             AppTheme.getCategoryIcon(exercise.category),
@@ -651,21 +611,35 @@ class _FavoriteCard extends StatelessWidget {
 
                       // ── Heart badge ──
                       Positioned(
-                        top: 6,
-                        right: 6,
+                        top: 8,
+                        right: 8,
                         child: Container(
-                          padding: const EdgeInsets.all(4),
+                          padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
-                            color: Colors.redAccent.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                                color:
-                                    Colors.redAccent.withValues(alpha: 0.4)),
+                            color: Colors.redAccent.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(
                             Icons.favorite,
                             size: 12,
-                            color: Colors.redAccent,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+
+                      // ── Degradado sutil abajo ──
+                      const Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 30,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, AppTheme.bgLight],
+                            ),
                           ),
                         ),
                       ),
@@ -673,34 +647,31 @@ class _FavoriteCard extends StatelessWidget {
                   ),
                 ),
 
-                // ── Info abajo ──
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
+                // ── Info ──
+                Expanded(
+                  flex: 3,
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           exercise.name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w700,
                             color: AppTheme.textPrimary,
-                            height: 1.2,
+                            height: 1.25,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const Spacer(),
                         Row(
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 2),
+                                  horizontal: 6, vertical: 3),
                               decoration: BoxDecoration(
                                 color: color.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
@@ -709,15 +680,15 @@ class _FavoriteCard extends StatelessWidget {
                                 _catLabel(exercise.category),
                                 style: TextStyle(
                                   fontSize: 9,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                   color: color,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: 6),
                             Icon(
                               AppTheme.getEquipmentIcon(exercise.equipment),
-                              size: 10,
+                              size: 11,
                               color: AppTheme.getEquipmentColor(
                                   exercise.equipment),
                             ),
@@ -729,31 +700,13 @@ class _FavoriteCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 9,
-                                  color: AppTheme.textMuted,
+                                  color: AppTheme.textSecondary,
                                 ),
                               ),
                             ),
                           ],
                         ),
                       ],
-                    ),
-                  ),
-                ),
-
-                // ── Dismissible indicator ──
-                Positioned(
-                  top: 38,
-                  right: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Icon(
-                      Icons.swipe_left,
-                      size: 10,
-                      color: Colors.white.withValues(alpha: 0.4),
                     ),
                   ),
                 ),
@@ -767,12 +720,21 @@ class _FavoriteCard extends StatelessWidget {
 
   Widget _imgFallback(Color color) {
     return Container(
-      color: color.withValues(alpha: 0.08),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withValues(alpha: 0.2),
+            color.withValues(alpha: 0.08),
+          ],
+        ),
+      ),
       child: Center(
         child: Icon(
           AppTheme.getCategoryIcon(exercise.category),
-          size: 28,
-          color: color.withValues(alpha: 0.4),
+          size: 36,
+          color: color.withValues(alpha: 0.7),
         ),
       ),
     );

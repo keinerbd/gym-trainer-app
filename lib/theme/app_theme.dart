@@ -74,6 +74,24 @@ class AppTheme {
   static Color getEquipmentColor(String eq) =>
       equipmentColors[eq.toLowerCase()] ?? textSecondary;
 
+  // ── Equipment Icons ──────────────────────────
+  static const Map<String, IconData> equipmentIcons = {
+    'body weight': Icons.accessibility_new,
+    'dumbbell': Icons.sports_gymnastics,
+    'barbell': Icons.sports_martial_arts,
+    'cable': Icons.vertical_align_center,
+    'band': Icons.loop,
+    'kettlebell': Icons.sports_kabaddi,
+    'smith machine': Icons.settings_input_component,
+    'leverage machine': Icons.settings,
+    'stability ball': Icons.sports_soccer,
+    'ez barbell': Icons.sports_martial_arts,
+    'weighted': Icons.add_circle_outline,
+  };
+
+  static IconData getEquipmentIcon(String eq) =>
+      equipmentIcons[eq.toLowerCase()] ?? Icons.fitness_center;
+
   // ── Glass helpers ────────────────────────────
 
   /// A frosted-glass surface decoration.

@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../models/exercise.dart';
 import '../models/weekly_routine.dart';
 import '../services/routine_service.dart';
 import '../services/exercise_service.dart';
 import '../services/supabase_service.dart';
+import '../services/workout_progress_service.dart';
 import '../theme/app_theme.dart';
 import 'exercise_detail_screen.dart';
 import 'calendar_screen.dart';
@@ -21,12 +25,14 @@ class _TrainerScreenState extends State<TrainerScreen> {
   final _routineSvc = RoutineService();
   final _exerciseSvc = ExerciseService();
   final _supabase = SupabaseService();
+  final _progress = WorkoutProgressService();
   String? _selectedDay; // Día seleccionado en la tira semanal
 
   @override
   void initState() {
     super.initState();
     _selectedDay = WeeklyRoutine.todayEs; // Por defecto, el día de hoy
+    _progress.load();
     _loadData();
   }
 
@@ -70,6 +76,14 @@ class _TrainerScreenState extends State<TrainerScreen> {
     final selectedDayIdx = WeeklyRoutine.dayNames.indexOf(selectedDay);
     final selectedDayName = selectedDayIdx >= 0 ? WeeklyRoutine.dayNames[selectedDayIdx] : selectedDay;
     final isSelectedToday = selectedDay == WeeklyRoutine.todayEs;
+
+    // Progreso del día seleccionado (ejercicios completados)
+    final doneCount = _progress.completedCount(
+      DateTime.now(),
+      selectedDayExercises.map((e) => e.exerciseId).toList(),
+    );
+    final totalCount = selectedDayExercises.length;
+    final dayProgress = totalCount == 0 ? 0.0 : doneCount / totalCount;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -196,6 +210,46 @@ class _TrainerScreenState extends State<TrainerScreen> {
                                   child: Text('${selectedDayExercises.length} ejercicios · ${profile?.goalLabel ?? ''}',
                                       style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
                                 ),
+                              if (hasRoutine && !isRest) ...[
+                                const SizedBox(height: 14),
+                                // ── Barra de progreso del día ──
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: LinearProgressIndicator(
+                                          value: dayProgress,
+                                          minHeight: 7,
+                                          backgroundColor:
+                                              Colors.white.withValues(alpha: 0.08),
+                                          valueColor: const AlwaysStoppedAnimation(
+                                              AppTheme.primary),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      '$doneCount/$totalCount',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppTheme.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  doneCount == totalCount
+                                      ? '🎉 ¡Entrenamiento completado!'
+                                      : 'Completados $doneCount de $totalCount ejercicios',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: doneCount == totalCount
+                                          ? AppTheme.primary
+                                          : AppTheme.textMuted),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -265,33 +319,10 @@ class _TrainerScreenState extends State<TrainerScreen> {
                           final re = selectedDayExercises[index];
                           final fullEx = _exerciseSvc.getById(re.exerciseId);
                           if (fullEx == null) return const SizedBox.shrink();
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                  tileColor: Colors.white.withValues(alpha: 0.03),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                    side: const BorderSide(color: AppTheme.glassBorder, width: 0.5),
-                                  ),
-                                  leading: CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
-                                    child: Text('${re.sets}x${re.reps}',
-                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-                                  ),
-                                  title: Text(re.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                                  subtitle: re.notes != null ? Text(re.notes!, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)) : null,
-                                  trailing: const Icon(Icons.chevron_right, size: 18, color: AppTheme.textMuted),
-                                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ExerciseDetailScreen(exercise: fullEx))),
-                                ),
-                              ),
-                            ),
-                          );
+                          final isDone = _progress.isCompleted(
+                              DateTime.now(), re.exerciseId);
+                          return _buildExerciseCard(
+                              index, re, fullEx, isDone);
                         },
                         childCount: selectedDayExercises.length,
                       ),
@@ -329,10 +360,252 @@ class _TrainerScreenState extends State<TrainerScreen> {
     );
   }
 
-  Widget _buildWeekStrip(WeeklyRoutine routine, String selectedDay) {
-    final today = WeeklyRoutine.todayEs;
-    const daysAbbr = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+  // ── Tarjeta de ejercicio ────────────────────
+  Widget _buildExerciseCard(
+      int index, RoutineExercise re, Exercise fullEx, bool isDone) {
+    final color = isDone
+        ? AppTheme.accent
+        : AppTheme.getCategoryColor(fullEx.category);
+    final imgUrl = fullEx.imageUrl;
 
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDone
+                  ? AppTheme.accent.withValues(alpha: 0.06)
+                  : Colors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDone
+                    ? AppTheme.accent.withValues(alpha: 0.4)
+                    : AppTheme.glassBorder,
+                width: isDone ? 1 : 0.5,
+              ),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => ExerciseDetailScreen(exercise: fullEx)),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    // ── Botón completar ──
+                    GestureDetector(
+                      onTap: () async {
+                        await _progress.toggle(
+                            DateTime.now(), re.exerciseId);
+                        if (mounted) setState(() {});
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isDone
+                              ? AppTheme.accent
+                              : Colors.transparent,
+                          border: Border.all(
+                            color: isDone
+                                ? AppTheme.accent
+                                : AppTheme.textMuted,
+                            width: 2,
+                          ),
+                        ),
+                        child: isDone
+                            ? const Icon(Icons.check,
+                                color: Colors.black, size: 18)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // ── Imagen del ejercicio ──
+                    Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: color.withValues(alpha: 0.25),
+                            width: 0.6),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: imgUrl != null
+                          ? CachedNetworkImage(
+                              imageUrl: imgUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: color.withValues(alpha: 0.6)),
+                                ),
+                              ),
+                              errorWidget: (_, __, ___) => _exerciseFallback(
+                                  fullEx, color),
+                            )
+                          : _exerciseFallback(fullEx, color),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // ── Info ──
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  re.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDone
+                                        ? AppTheme.accent
+                                        : AppTheme.textPrimary,
+                                    decoration: isDone
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                    decorationColor: AppTheme.accent,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // ── Sets x Reps ──
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '${re.sets}x${re.reps}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: color,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (re.notes != null && re.notes!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Text(
+                                re.notes!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textMuted),
+                              ),
+                            ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                AppTheme.getEquipmentIcon(
+                                    fullEx.equipment),
+                                size: 12,
+                                color: AppTheme.getEquipmentColor(
+                                    fullEx.equipment),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                fullEx.equipment,
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppTheme.textSecondary),
+                              ),
+                              const SizedBox(width: 10),
+                              Icon(Icons.fitness_center,
+                                  size: 12,
+                                  color: color.withValues(alpha: 0.8)),
+                              const SizedBox(width: 4),
+                              Text(
+                                fullEx.target,
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppTheme.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+
+                    // ── Temporizador de descanso ──
+                    GestureDetector(
+                      onTap: () => _openRestTimer(re.name),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(
+                              color: AppTheme.glassBorder, width: 0.5),
+                        ),
+                        child: const Icon(Icons.timer_outlined,
+                            size: 18, color: AppTheme.primary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Placeholder cuando el ejercicio no tiene imagen.
+  Widget _exerciseFallback(Exercise fullEx, Color color) {
+    return Center(
+      child: Icon(
+        AppTheme.getCategoryIcon(fullEx.category),
+        size: 26,
+        color: color.withValues(alpha: 0.6),
+      ),
+    );
+  }
+
+  // ── Temporizador de descanso ─────────────────
+  void _openRestTimer(String exerciseName) {
+    const presets = [30, 45, 60, 90, 120];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _RestTimerSheet(
+        exerciseName: exerciseName,
+        presets: presets,
+      ),
+    );
+  }
+
+  Widget _buildWeekStrip(WeeklyRoutine routine, String selectedDay) {
+    const daysAbbr = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: ClipRRect(
@@ -349,7 +622,6 @@ class _TrainerScreenState extends State<TrainerScreen> {
             child: Row(
               children: List.generate(7, (i) {
                 final day = WeeklyRoutine.dayNames[i];
-                final isToday = day == today;
                 final isSelected = day == selectedDay;
                 final exs = routine.days[day] ?? [];
                 final isRest = exs.isEmpty;
@@ -442,6 +714,308 @@ class _TrainerScreenState extends State<TrainerScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               elevation: 0,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hoja inferior con temporizador de descanso entre series.
+class _RestTimerSheet extends StatefulWidget {
+  final String exerciseName;
+  final List<int> presets;
+
+  const _RestTimerSheet({
+    required this.exerciseName,
+    required this.presets,
+  });
+
+  @override
+  State<_RestTimerSheet> createState() => _RestTimerSheetState();
+}
+
+class _RestTimerSheetState extends State<_RestTimerSheet>
+    with SingleTickerProviderStateMixin {
+  Timer? _timer;
+  int _remaining = 60;
+  bool _running = false;
+  late final AnimationController _pulseCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700));
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  void _start() {
+    setState(() => _running = true);
+    _pulseCtrl.repeat(reverse: true);
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (_remaining <= 1) {
+        t.cancel();
+        _pulseCtrl.stop();
+        _pulseCtrl.value = 1;
+        if (mounted) {
+          setState(() {
+            _remaining = 0;
+            _running = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _remaining--);
+      }
+    });
+  }
+
+  void _pause() {
+    _timer?.cancel();
+    _pulseCtrl.stop();
+    if (mounted) setState(() => _running = false);
+  }
+
+  void _reset() {
+    _timer?.cancel();
+    _pulseCtrl.stop();
+    _pulseCtrl.value = 0;
+    if (mounted) {
+      setState(() {
+        _remaining = 60;
+        _running = false;
+      });
+    }
+  }
+
+  String get _formatted {
+    final m = (_remaining ~/ 60).toString().padLeft(2, '0');
+    final s = (_remaining % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = _remaining == 0;
+    final ringColor =
+        isDone ? AppTheme.accent : (_running ? AppTheme.primary : AppTheme.textSecondary);
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
+          decoration: BoxDecoration(
+            color: AppTheme.bgMid.withValues(alpha: 0.97),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: AppTheme.glassBorder, width: 0.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.textMuted.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(Icons.timer_outlined,
+                      color: AppTheme.primary, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Descanso${widget.exerciseName.isNotEmpty ? ' · ${widget.exerciseName}' : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close,
+                        size: 18, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // ── Tiempo ──
+              AnimatedBuilder(
+                animation: _pulseCtrl,
+                builder: (context, _) {
+                  final scale = 1 + _pulseCtrl.value * 0.03;
+                  return Transform.scale(
+                    scale: isDone ? 1 : scale,
+                    child: Container(
+                      width: 150,
+                      height: 150,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            ringColor.withValues(alpha: isDone ? 0.3 : 0.18),
+                            Colors.transparent,
+                          ],
+                        ),
+                        border: Border.all(
+                          color: ringColor.withValues(alpha: 0.5),
+                          width: 3,
+                        ),
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _formatted,
+                              style: TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.w800,
+                                color: isDone
+                                    ? AppTheme.accent
+                                    : AppTheme.textPrimary,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
+                              ),
+                            ),
+                            Text(
+                              isDone
+                                  ? '¡Descanso terminado!'
+                                  : _running
+                                      ? 'Descansando...'
+                                      : 'Listo para empezar',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isDone
+                                    ? AppTheme.accent
+                                    : AppTheme.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // ── Presets ──
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: widget.presets.map((p) {
+                  final active = !_running && !isDone && _remaining == p;
+                  return GestureDetector(
+                    onTap: _running
+                        ? null
+                        : () {
+                            setState(() => _remaining = p);
+                          },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: active
+                            ? AppTheme.primary.withValues(alpha: 0.2)
+                            : Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: active
+                              ? AppTheme.primary.withValues(alpha: 0.5)
+                              : AppTheme.glassBorder,
+                          width: 0.6,
+                        ),
+                      ),
+                      child: Text(
+                        '${p ~/ 60 > 0 ? '${p ~/ 60}:' : ''}${(p % 60).toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: active
+                              ? AppTheme.primary
+                              : AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Controles ──
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: _reset,
+                    icon: const Icon(Icons.replay,
+                        color: AppTheme.textSecondary, size: 22),
+                    tooltip: 'Reiniciar',
+                  ),
+                  const SizedBox(width: 20),
+                  SizedBox(
+                    width: 72,
+                    height: 72,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(36),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: ElevatedButton(
+                          onPressed: _running ? _pause : _start,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _running
+                                ? AppTheme.textSecondary
+                                : AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            shape: const CircleBorder(),
+                            elevation: 0,
+                            padding: EdgeInsets.zero,
+                          ),
+                          child: Icon(
+                            _running
+                                ? Icons.pause
+                                : (isDone ? Icons.refresh : Icons.play_arrow),
+                            size: 30,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  IconButton(
+                    onPressed: () {
+                      _pause();
+                      Navigator.pop(context);
+                    },
+                    icon: const Icon(Icons.stop,
+                        color: AppTheme.textSecondary, size: 22),
+                    tooltip: 'Detener',
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

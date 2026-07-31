@@ -5,7 +5,6 @@ import '../models/chat_message.dart';
 import '../models/weekly_routine.dart';
 import '../services/routine_service.dart';
 import '../services/groq_service.dart';
-import '../services/exercise_service.dart';
 import '../theme/app_theme.dart';
 
 /// Pantalla de chat con el entrenador IA.
@@ -29,7 +28,6 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _routineSvc = RoutineService();
   final _groqSvc = GroqService();
-  final _exerciseSvc = ExerciseService();
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 

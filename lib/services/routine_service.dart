@@ -78,6 +78,21 @@ class RoutineService {
     await prefs.setString(_apiKeyKey, key);
   }
 
+  /// Actualiza los ejercicios de UN solo día en la rutina actual.
+  Future<void> updateDay(String dayName, List<RoutineExercise> exercises) async {
+    if (_currentRoutine == null) return;
+    final updatedDays = Map<String, List<RoutineExercise>>.from(
+      _currentRoutine!.days.map((k, v) => MapEntry(k, List<RoutineExercise>.from(v))),
+    );
+    updatedDays[dayName] = exercises;
+    final updated = WeeklyRoutine(
+      id: _currentRoutine!.id,
+      createdAt: _currentRoutine!.createdAt,
+      days: updatedDays,
+    );
+    await saveRoutine(updated);
+  }
+
   Future<void> clearRoutine() async {
     _currentRoutine = null;
     final prefs = await SharedPreferences.getInstance();

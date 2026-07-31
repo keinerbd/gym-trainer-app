@@ -85,6 +85,10 @@ class _TrainerScreenState extends State<TrainerScreen> {
     final totalCount = selectedDayExercises.length;
     final dayProgress = totalCount == 0 ? 0.0 : doneCount / totalCount;
 
+    // Estado del día seleccionado
+    final selectedDayStatus = WeeklyRoutine.dayStatus(selectedDay);
+    final canToggleProgress = selectedDayStatus == 'today';
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       body: Stack(
@@ -201,9 +205,34 @@ class _TrainerScreenState extends State<TrainerScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                isRest ? '¡Día de descanso! 💆' : hasRoutine ? 'Tu entrenamiento de hoy' : 'Sin rutina asignada',
+                                isRest
+                                    ? '¡Día de descanso! 💆'
+                                    : hasRoutine
+                                        ? (selectedDayStatus == 'past'
+                                            ? 'Rutina del día pasado 🔒'
+                                            : selectedDayStatus == 'future'
+                                                ? 'Próximo entrenamiento 📅'
+                                                : 'Tu entrenamiento de hoy')
+                                        : 'Sin rutina asignada',
                                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
                               ),
+                              // Mensaje de estado para días no-hoy
+                              if (hasRoutine && selectedDayStatus == 'past')
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Este día ya pasó. La rutina no se puede modificar.',
+                                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted.withValues(alpha: 0.7)),
+                                  ),
+                                ),
+                              if (hasRoutine && selectedDayStatus == 'future' && !isRest)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Aún no puedes marcar ejercicios. ¡Prepárate!',
+                                    style: TextStyle(fontSize: 12, color: AppTheme.accent.withValues(alpha: 0.7)),
+                                  ),
+                                ),
                               if (hasRoutine && !isRest)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 6),
@@ -294,8 +323,21 @@ class _TrainerScreenState extends State<TrainerScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                       child: Row(
                         children: [
-                          Text(isSelectedToday ? 'TUS EJERCICIOS' : 'EJERCICIOS - ${selectedDayName.toUpperCase()}',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.textMuted, letterSpacing: 1.5)),
+                          Text(
+                            isSelectedToday
+                                ? 'TUS EJERCICIOS'
+                                : selectedDayStatus == 'past'
+                                    ? 'EJERCICIOS - ${selectedDayName.toUpperCase()} 🔒'
+                                    : 'EJERCICIOS - ${selectedDayName.toUpperCase()}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: selectedDayStatus == 'past'
+                                  ? AppTheme.textMuted.withValues(alpha: 0.6)
+                                  : AppTheme.textMuted,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
                           const Spacer(),
                           TextButton.icon(
                             onPressed: () => _openAiChat(selectedDay, selectedDayName),
@@ -322,7 +364,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
                           final isDone = _progress.isCompleted(
                               DateTime.now(), re.exerciseId);
                           return _buildExerciseCard(
-                              index, re, fullEx, isDone);
+                              index, re, fullEx, isDone, canToggleProgress);
                         },
                         childCount: selectedDayExercises.length,
                       ),
@@ -362,7 +404,7 @@ class _TrainerScreenState extends State<TrainerScreen> {
 
   // ── Tarjeta de ejercicio ────────────────────
   Widget _buildExerciseCard(
-      int index, RoutineExercise re, Exercise fullEx, bool isDone) {
+      int index, RoutineExercise re, Exercise fullEx, bool isDone, bool canToggle) {
     final color = isDone
         ? AppTheme.accent
         : AppTheme.getCategoryColor(fullEx.category);
@@ -401,11 +443,13 @@ class _TrainerScreenState extends State<TrainerScreen> {
                   children: [
                     // ── Botón completar ──
                     GestureDetector(
-                      onTap: () async {
-                        await _progress.toggle(
-                            DateTime.now(), re.exerciseId);
-                        if (mounted) setState(() {});
-                      },
+                      onTap: canToggle
+                          ? () async {
+                              await _progress.toggle(
+                                  DateTime.now(), re.exerciseId);
+                              if (mounted) setState(() {});
+                            }
+                          : null,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
                         width: 30,
@@ -416,16 +460,23 @@ class _TrainerScreenState extends State<TrainerScreen> {
                               ? AppTheme.accent
                               : Colors.transparent,
                           border: Border.all(
-                            color: isDone
-                                ? AppTheme.accent
-                                : AppTheme.textMuted,
+                            color: !canToggle
+                                ? AppTheme.textMuted.withValues(alpha: 0.3)
+                                : isDone
+                                    ? AppTheme.accent
+                                    : AppTheme.textMuted,
                             width: 2,
                           ),
                         ),
                         child: isDone
                             ? const Icon(Icons.check,
                                 color: Colors.black, size: 18)
-                            : null,
+                            : !canToggle
+                                ? Icon(Icons.lock_outline,
+                                    size: 14,
+                                    color:
+                                        AppTheme.textMuted.withValues(alpha: 0.4))
+                                : null,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -628,6 +679,10 @@ class _TrainerScreenState extends State<TrainerScreen> {
                 final label = routine.dayLabel(day);
                 final emoji = routine.dayEmoji(day);
 
+                final dayStatus = WeeklyRoutine.dayStatus(day);
+                final isPast = dayStatus == 'past';
+                final isFuture = dayStatus == 'future';
+
                 return Expanded(
                   child: GestureDetector(
                     onTap: () {
@@ -655,14 +710,21 @@ class _TrainerScreenState extends State<TrainerScreen> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: isSelected ? AppTheme.primary : AppTheme.textMuted,
+                              color: isSelected
+                                  ? AppTheme.primary
+                                  : isPast
+                                      ? AppTheme.textMuted.withValues(alpha: 0.5)
+                                      : AppTheme.textMuted,
                               letterSpacing: 0.5,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            emoji,
-                            style: const TextStyle(fontSize: 16),
+                            isPast ? '🔒' : isFuture && !isRest ? '📅' : emoji,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isPast ? AppTheme.textMuted.withValues(alpha: 0.5) : null,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
@@ -673,7 +735,11 @@ class _TrainerScreenState extends State<TrainerScreen> {
                             style: TextStyle(
                               fontSize: 8,
                               fontWeight: FontWeight.w600,
-                              color: isRest ? AppTheme.textMuted : AppTheme.textSecondary,
+                              color: isRest
+                                  ? AppTheme.textMuted
+                                  : isPast
+                                      ? AppTheme.textMuted.withValues(alpha: 0.6)
+                                      : AppTheme.textSecondary,
                             ),
                           ),
                           if (!isRest)
@@ -682,7 +748,11 @@ class _TrainerScreenState extends State<TrainerScreen> {
                               width: 4, height: 4,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: isSelected ? AppTheme.primary : AppTheme.accent.withValues(alpha: 0.6),
+                                color: isSelected
+                                    ? AppTheme.primary
+                                    : isPast
+                                        ? AppTheme.textMuted.withValues(alpha: 0.4)
+                                        : AppTheme.accent.withValues(alpha: 0.6),
                               ),
                             ),
                         ],

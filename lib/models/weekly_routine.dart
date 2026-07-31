@@ -53,6 +53,31 @@ class WeeklyRoutine {
     return dayNames[idx];
   }
 
+  /// Índice del día de hoy (0=lunes, 6=domingo).
+  static int get todayIndex => DateTime.now().weekday - 1;
+
+  /// Devuelve el estado de un día respecto a hoy:
+  /// 'past' = ya pasó, 'today' = es hoy, 'future' = aún no llega.
+  static String dayStatus(String day) {
+    final idx = dayNames.indexOf(day);
+    if (idx < 0) return 'unknown';
+    if (idx < todayIndex) return 'past';
+    if (idx == todayIndex) return 'today';
+    return 'future';
+  }
+
+  /// Determina si un día permite marcar progreso (solo hoy).
+  static bool canMarkProgress(String day) => dayStatus(day) == 'today';
+
+  /// Determina si un día permite regenerar la rutina (hoy o futuro).
+  static bool canRegenerateRoutine(String day) {
+    final status = dayStatus(day);
+    return status == 'today' || status == 'future';
+  }
+
+  /// Determina si un día está bloqueado (pasado = no se puede modificar).
+  static bool isLocked(String day) => dayStatus(day) == 'past';
+
   /// Ejercicios del día actual, o lista vacía si es día de descanso.
   List<RoutineExercise> get todayExercises {
     final today = todayEs;

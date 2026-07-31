@@ -338,4 +338,106 @@ Contexto adicional:
       }
     }
   }
+
+  /// Genera ejercicios para UN solo día específico usando IA.
+  /// Devuelve la lista de ejercicios para ese día.
+  Future<List<RoutineExercise>> generateDayRoutine({
+    required UserProfile profile,
+    required String dayName,
+    required List<Map<String, String>> ragExercises,
+    String? muscleGroup,
+  }) async {
+    if (!hasKey) throw Exception('API key de Groq no configurada.');
+
+    final exerciseList = ragExercises
+        .map((e) =>
+            '- ID:${e['id']} | ${e['name']} | categoría:${e['category']} | equipo:${e['equipment']} | músculo:${e['target']}')
+        .join('\n');
+
+    final groupHint = muscleGroup != null
+        ? '\nEnfócate en el grupo muscular: $muscleGroup.'
+        : '';
+
+    final prompt =
+        '''Eres un entrenador personal profesional. Genera ejercicios para el día "$dayName" de la rutina semanal del usuario.
+
+Perfil:
+- Género: ${profile.genderLabel}
+- Edad: ${profile.age} años
+- Peso: ${profile.weightKg} kg
+- Altura: ${profile.heightCm} cm
+- Nivel: ${profile.levelLabel}
+- Objetivo: ${profile.goalLabel}
+$groupHint
+
+Reglas:
+- Genera entre 5 y 8 ejercicios.
+- Cada ejercicio debe tener series (sets), repeticiones (reps) y el exerciseId EXACTO de la lista.
+- Usa SOLO exerciseId que aparezcan en la lista proporcionada.
+- Incluye notas breves en español si es relevante.
+- Responde SOLO con un JSON array válido, sin markdown ni texto adicional.
+
+Lista de ejercicios disponibles:
+$exerciseList
+
+Responde ÚNICAMENTE con un JSON array:
+[
+  {"exerciseId": "0001", "sets": 3, "reps": 12, "notes": "Controla el descenso"},
+  {"exerciseId": "0002", "sets": 3, "reps": 10, "notes": "Rango completo de movimiento"}
+]
+
+NO uses markdown. Responde SOLO con el JSON array.''';
+
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: {
+        'Authorization': 'Bearer $apiKey',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'model': _model,
+        'messages': [
+          {
+            'role': 'system',
+            'content':
+                'Eres un entrenador personal que responde solo con JSON válido.'
+          },
+          {'role': 'user', 'content': prompt},
+        ],
+        'temperature': 0.7,
+        'max_tokens': 2000,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      final err = jsonDecode(response.body);
+      throw Exception(
+          'Error de Groq API: ${err['error']?['message'] ?? response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    final content = data['choices'][0]['message']['content'] as String;
+
+    // Limpiar posible markdown
+    final clean =
+        content.replaceAll('```json', '').replaceAll('```', '').trim();
+
+    final listJson = jsonDecode(clean) as List<dynamic>;
+
+    return listJson.map((e) {
+      final ex = e as Map<String, dynamic>;
+      final found = ragExercises.firstWhere(
+        (ae) => ae['id'] == ex['exerciseId'],
+        orElse: () => {'name': ex['exerciseId'] ?? 'Ejercicio'},
+      );
+      return RoutineExercise(
+        exerciseId: ex['exerciseId']?.toString() ?? '',
+        name: found['name'] ?? ex['exerciseId']?.toString() ?? 'Ejercicio',
+        sets: ex['sets'] ?? 3,
+        reps: ex['reps'] ?? 12,
+        durationSeconds: ex['durationSeconds'],
+        notes: ex['notes']?.toString(),
+      );
+    }).toList();
+  }
 }

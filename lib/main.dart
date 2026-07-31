@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config.dart';
 import 'services/exercise_service.dart';
 import 'services/supabase_service.dart';
 import 'services/groq_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth_screen.dart';
+import 'screens/reset_password_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -40,9 +42,35 @@ void main() async {
   runApp(GymApp(supabaseReady: supabaseReady));
 }
 
-class GymApp extends StatelessWidget {
+class GymApp extends StatefulWidget {
   final bool supabaseReady;
   const GymApp({super.key, required this.supabaseReady});
+
+  @override
+  State<GymApp> createState() => _GymAppState();
+}
+
+class _GymAppState extends State<GymApp> {
+  late final Stream<AuthState> _authStream;
+  bool _isRecovery = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Detectar el flujo de recuperación de contraseña:
+    // cuando el usuario llega desde el email de reset, Supabase emite
+    // el evento `recovery` y mostramos la pantalla de nueva contraseña.
+    if (widget.supabaseReady) {
+      _authStream = SupabaseService().authStateChanges;
+      _authStream.listen((data) {
+        if (data.event == AuthChangeEvent.passwordRecovery) {
+          if (mounted) setState(() => _isRecovery = true);
+        } else if (data.event == AuthChangeEvent.signedOut) {
+          if (mounted) setState(() => _isRecovery = false);
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +83,8 @@ class GymApp extends StatelessWidget {
   }
 
   Widget _buildHome() {
-    if (!supabaseReady) return const HomeScreen();
+    if (!widget.supabaseReady) return const HomeScreen();
+    if (_isRecovery) return const ResetPasswordScreen();
     final supabase = SupabaseService();
     return supabase.isLoggedIn ? const HomeScreen() : const AuthScreen();
   }

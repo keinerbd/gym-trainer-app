@@ -169,7 +169,29 @@ class _AuthScreenState extends State<AuthScreen> {
                           onPressed: () => setState(() => _obscure = !_obscure),
                         ),
                       ),
-                      const SizedBox(height: 24),
+
+                      // ¿Olvidaste tu contraseña?
+                      if (_isLogin)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _showForgotPasswordDialog,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              foregroundColor: AppTheme.textSecondary,
+                            ),
+                            child: const Text(
+                              '¿Olvidaste tu contraseña?',
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w500,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: AppTheme.textSecondary),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
 
                       // Botón
                       SizedBox(
@@ -254,8 +276,7 @@ class _AuthScreenState extends State<AuthScreen> {
     TextInputType? keyboardType,
     bool obscure = false,
     Widget? suffix,
-  }) {
-    return ClipRRect(
+  }) {    return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
@@ -275,9 +296,150 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  Future<void> _showForgotPasswordDialog() async {
+    final emailCtrl = TextEditingController(text: _emailCtrl.text.trim());
+    bool sending = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: AppTheme.bgMid,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: AppTheme.glassBorder),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                        colors: [AppTheme.primary, AppTheme.primaryLight]),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.lock_reset,
+                      color: Colors.white, size: 28),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Recuperar contraseña',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Te enviaremos un enlace a tu email para restablecer tu contraseña.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13, color: AppTheme.textSecondary, height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    child: TextFormField(
+                      controller: emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(
+                          color: AppTheme.textPrimary, fontSize: 15),
+                      decoration: const InputDecoration(
+                        hintText: 'Tu email',
+                        prefixIcon:
+                            Icon(Icons.email_outlined, size: 20),
+                      ),
+                      validator: (v) =>
+                          (v == null || !v.contains('@')) ? 'Email inválido' : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: sending
+                        ? null
+                        : () async {
+                            if (!emailCtrl.text.contains('@')) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                const SnackBar(
+                                    content:
+                                        Text('⚠️ Ingresa un email válido.')),
+                              );
+                              return;
+                            }
+                            setDialogState(() => sending = true);
+                            try {
+                              await _supabase
+                                  .resetPassword(emailCtrl.text.trim());
+                              if (dialogContext.mounted) {
+                                Navigator.of(dialogContext).pop();
+                              }
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        '📧 Revisa tu email: te enviamos el enlace de recuperación.'),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (dialogContext.mounted) {
+                                setDialogState(() => sending = false);
+                                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        '❌ ${e.toString().replaceFirst('AuthException: ', '').replaceFirst('Exception: ', '')}'),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    child: sending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('ENVIAR ENLACE',
+                            style: TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar',
+                      style: TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() {
       _loading = true;
       _error = null;
@@ -309,7 +471,7 @@ class _AuthScreenState extends State<AuthScreen> {
       // Navegar al home
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => HomeScreen()),
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
           (_) => false,
         );
       }

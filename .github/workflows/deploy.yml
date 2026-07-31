@@ -18,11 +18,25 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.x'
+          flutter-version: '3.44.x'
           channel: 'stable'
 
       - name: Install dependencies
         run: flutter pub get
+
+      # Genera lib/config.dart desde los GitHub Secrets.
+      # (config.dart está en .gitignore para no exponer las API keys)
+      - name: Create config.dart from secrets
+        run: |
+          echo "/// Configuración de API keys para la aplicación." > lib/config.dart
+          echo "class AppConfig {" >> lib/config.dart
+          echo "  /// URL del proyecto Supabase" >> lib/config.dart
+          echo "  static const String supabaseUrl = '${{ secrets.SUPABASE_URL }}';" >> lib/config.dart
+          echo "  /// Anon Key del proyecto Supabase" >> lib/config.dart
+          echo "  static const String supabaseAnonKey = '${{ secrets.SUPABASE_ANON_KEY }}';" >> lib/config.dart
+          echo "  /// API Key de Groq para el entrenador con IA" >> lib/config.dart
+          echo "  static const String groqApiKey = '${{ secrets.GROQ_API_KEY }}';" >> lib/config.dart
+          echo "}" >> lib/config.dart
 
       - name: Build web
         run: flutter build web
@@ -33,3 +47,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: 2d7acfb36af9220b506218f44930f958
           command: pages deploy build/web --project-name=gym-trainer-app
+

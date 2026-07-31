@@ -3,11 +3,12 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../models/user_profile.dart';
 import '../models/weekly_routine.dart';
+import '../models/chat_message.dart';
 
 /// Servicio que se comunica con la API de Groq para generar rutinas con IA.
 class GroqService {
   static const _baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
-  static const _model = 'llama-3.3-70b-versatile';
+  static const _model = 'openai/gpt-oss-120b';
 
   String? _apiKey;
 
@@ -242,5 +243,99 @@ INSTRUCCIONES:
 
     final data = jsonDecode(response.body);
     return data['choices'][0]['message']['content'] as String;
+  }
+
+  /// 🗨️ Chat con el entrenador IA con MEMORIA de conversación y STREAMING.
+  ///
+  /// Envía todo el historial de la conversación para que la IA recuerde
+  /// el contexto, y devuelve un stream de texto con las respuestas parciales
+  /// para mostrar la respuesta mientras se genera.
+  Stream<String> chatStream({
+    required UserProfile profile,
+    required String routineContext,
+    required List<ChatMessage> history,
+    required String userMessage,
+  }) async* {
+    if (!hasKey) throw Exception('API key de Groq no configurada.');
+
+    final systemPrompt = '''
+Eres un entrenador personal profesional experto en fitness y nutrición.
+Responde SIEMPRE en español, de forma breve y útil (3-5 frases salvo que pidan más detalle).
+NO uses markdown (ni **, ni #, ni listas con guiones). Usa texto plano, puedes usar emojis con moderación.
+Sé motivador, directo y específico. Si el usuario pregunta algo fuera de fitness, redirige amablemente.
+
+Perfil del usuario:
+- ${profile.genderLabel}, ${profile.age} años, ${profile.weightKg.toInt()} kg, ${profile.heightCm.toInt()} cm
+- Nivel: ${profile.levelLabel}
+- Objetivo: ${profile.goalLabel}
+
+Rutina semanal actual del usuario:
+$routineContext
+
+Contexto adicional:
+- El usuario puede pedirte que sustituyas ejercicios, ajustes series/reps, o te explique la técnica.
+- Si sugiere un ejercicio, explícalo brevemente y justifica por qué encaja con su objetivo.
+- Ten en cuenta su nivel y objetivo en cada recomendación.
+''';
+
+    final chatHistory = history
+        .where((m) => m.isUser || m.isAssistant)
+        .toList();
+    // Solo enviar los últimos 10 mensajes para no saturar el contexto
+    final trimmed = chatHistory.length > 10
+        ? chatHistory.sublist(chatHistory.length - 10)
+        : chatHistory;
+
+    final messages = <Map<String, String>>[
+      {'role': 'system', 'content': systemPrompt},
+      ...trimmed.map((m) => {'role': m.role, 'content': m.content}),
+      {'role': 'user', 'content': userMessage},
+    ];
+
+    final client = http.Client();
+    final request = http.Request('POST', Uri.parse(_baseUrl));
+    request.headers.addAll({
+      'Authorization': 'Bearer $apiKey',
+      'Content-Type': 'application/json',
+    });
+    request.body = jsonEncode({
+      'model': _model,
+      'messages': messages,
+      'temperature': 0.7,
+      'max_tokens': 800,
+      'stream': true,
+    });
+
+    final response = await client.send(request);
+
+    if (response.statusCode != 200) {
+      final body = await response.stream.bytesToString();
+      throw Exception('Error de Groq API: $body');
+    }
+
+    // Parseo de Server-Sent Events (SSE)
+    var buffer = '';
+    await for (final chunk in response.stream.transform(utf8.decoder)) {
+      buffer += chunk;
+      while (buffer.contains('\n')) {
+        final lineEnd = buffer.indexOf('\n');
+        final line = buffer.substring(0, lineEnd).trim();
+        buffer = buffer.substring(lineEnd + 1);
+
+        if (!line.startsWith('data:')) continue;
+        final data = line.substring(5).trim();
+        if (data == '[DONE]') return;
+
+        try {
+          final json = jsonDecode(data);
+          final delta = json['choices']?[0]?['delta']?['content'];
+          if (delta != null && delta.isNotEmpty) {
+            yield delta;
+          }
+        } catch (_) {
+          // Ignorar líneas no parseables
+        }
+      }
+    }
   }
 }

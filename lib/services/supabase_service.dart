@@ -55,6 +55,16 @@ class SupabaseService {
     await client.auth.signOut();
   }
 
+  /// Envía un email de recuperación de contraseña.
+  Future<void> resetPassword(String email) async {
+    await client.auth.resetPasswordForEmail(email);
+  }
+
+  /// Actualiza la contraseña del usuario (usar tras el flujo de recuperación).
+  Future<void> updatePassword(String newPassword) async {
+    await client.auth.updateUser(UserAttributes(password: newPassword));
+  }
+
   Stream<AuthState> get authStateChanges => client.auth.onAuthStateChange;
 
   // ══════════════════════════════════════════════════

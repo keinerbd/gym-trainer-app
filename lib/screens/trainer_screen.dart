@@ -9,6 +9,7 @@ import 'exercise_detail_screen.dart';
 import 'calendar_screen.dart';
 import 'profile_screen.dart';
 import 'auth_screen.dart';
+import 'chat_screen.dart';
 
 class TrainerScreen extends StatefulWidget {
   const TrainerScreen({super.key});
@@ -41,6 +42,16 @@ class _TrainerScreenState extends State<TrainerScreen> {
       if (r != null) await _routineSvc.saveRoutine(r);
       if (mounted) setState(() {});
     }
+  }
+
+  /// Abre el chat con el entrenador IA para el día seleccionado.
+  void _openAiChat(String day, String dayLabel) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(dayName: day, dayLabel: dayLabel),
+      ),
+    );
   }
 
   @override
@@ -117,6 +128,11 @@ class _TrainerScreenState extends State<TrainerScreen> {
                         await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
                         setState(() {});
                       },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chat_bubble_outline, color: AppTheme.accent),
+                      tooltip: 'Preguntar al entrenador IA',
+                      onPressed: () => _openAiChat(selectedDay, selectedDayName),
                     ),
                     IconButton(
                       icon: const Icon(Icons.calendar_month, color: AppTheme.accent),
@@ -227,6 +243,11 @@ class _TrainerScreenState extends State<TrainerScreen> {
                           Text(isSelectedToday ? 'TUS EJERCICIOS' : 'EJERCICIOS - ${selectedDayName.toUpperCase()}',
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.textMuted, letterSpacing: 1.5)),
                           const Spacer(),
+                          TextButton.icon(
+                            onPressed: () => _openAiChat(selectedDay, selectedDayName),
+                            icon: const Icon(Icons.chat_bubble_outline, size: 16, color: AppTheme.primary),
+                            label: const Text('Preguntar a la IA', style: TextStyle(fontSize: 12, color: AppTheme.primary)),
+                          ),
                           TextButton.icon(
                             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CalendarScreen())),
                             icon: const Icon(Icons.calendar_month, size: 16, color: AppTheme.accent),

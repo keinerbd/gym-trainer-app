@@ -9,7 +9,7 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import 'exercise_detail_screen.dart';
 import 'profile_screen.dart';
-import '../services/groq_service.dart';
+import 'chat_screen.dart';
 
 /// Pantalla de calendario semanal con la rutina generada por IA.
 class CalendarScreen extends StatefulWidget {
@@ -452,188 +452,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final profile = _routineSvc.profile;
     if (profile == null) return;
 
-    final currentExs = exercises.map((e) => {
-      'id': e.exerciseId,
-      'name': e.name,
-      'category': '',
-      'equipment': '',
-      'target': '',
-    }).toList();
-
-    // Obtener ejercicios disponibles (los del RAG)
-    final supabase = SupabaseService();
-    List<Map<String, String>> availableExs;
-    if (supabase.isInitialized) {
-      availableExs = await supabase.ragSearchExercises(profile: profile, limit: 40);
-    } else {
-      availableExs = _exerciseSvc.exercises.take(60).map((e) => {
-        'id': e.id,
-        'name': e.name,
-        'category': e.category,
-        'equipment': e.equipment,
-        'target': e.target,
-      }).toList();
-    }
-
-    final ctrl = TextEditingController();
-    String? response;
-    bool loading = false;
-
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(ctx).size.height * 0.7,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.bgMid.withValues(alpha: 0.95),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                  border: Border.all(color: AppTheme.glassBorder, width: 0.5),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle bar
-                    Container(
-                      margin: const EdgeInsets.only(top: 10),
-                      width: 40, height: 4,
-                      decoration: BoxDecoration(
-                        color: AppTheme.textMuted.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    // Header
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.auto_awesome, color: AppTheme.primary, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Entrenador IA · $dayLabel',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Exercises in the day
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Wrap(
-                        spacing: 6, runSpacing: 4,
-                        children: exercises.map((e) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text('${e.sets}x${e.reps} ${e.name}',
-                              style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-                        )).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // AI response
-                    if (response != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
-                          ),
-                          child: Text(response!, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, height: 1.5)),
-                        ),
-                      ),
-                    if (loading)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2),
-                      ),
-                    // Input
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                child: TextField(
-                                  controller: ctrl,
-                                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
-                                  decoration: InputDecoration(
-                                    hintText: 'Ej: "Sustituye press de banca por otro ejercicio de pecho"',
-                                    hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                    border: InputBorder.none,
-                                    filled: true,
-                                    fillColor: Colors.white.withValues(alpha: 0.05),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          InkWell(
-                            onTap: loading ? null : () async {
-                              final msg = ctrl.text.trim();
-                              if (msg.isEmpty) return;
-                              setModalState(() {
-                                loading = true;
-                                response = null;
-                              });
-                              try {
-                                final reply = await _groqSvc.chatAdvice(
-                                  profile: profile,
-                                  dayName: dayLabel,
-                                  currentExercises: currentExs,
-                                  availableExercises: availableExs,
-                                  userMessage: msg,
-                                );
-                                setModalState(() {
-                                  response = reply;
-                                  loading = false;
-                                });
-                              } catch (e) {
-                                setModalState(() {
-                                  response = 'Error: ${e.toString().replaceFirst("Exception: ", "")}';
-                                  loading = false;
-                                });
-                              }
-                            },
-                            child: Container(
-                              width: 44, height: 44,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            ),
-          ),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          dayName: day,
+          dayLabel: dayLabel,
+          onRoutineGenerated: widget.onRoutineGenerated,
         ),
       ),
     );
